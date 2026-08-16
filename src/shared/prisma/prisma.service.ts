@@ -13,14 +13,6 @@ export class PrismaService
 {
   private readonly logger = new Logger(PrismaService.name);
 
-  constructor(datasourceUrl?: string) {
-    super(
-      datasourceUrl
-        ? { datasources: { db: { url: datasourceUrl } } }
-        : undefined,
-    );
-  }
-
   async onModuleInit(): Promise<void> {
     await this.$connect();
     this.logger.log('Conectado ao PostgreSQL via Prisma');

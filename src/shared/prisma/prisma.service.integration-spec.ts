@@ -10,7 +10,8 @@ describe('PrismaService (integration)', () => {
 
   beforeAll(async () => {
     container = await new PostgreSqlContainer('postgres:16-alpine').start();
-    prismaService = new PrismaService(container.getConnectionUri());
+    process.env.DATABASE_URL = container.getConnectionUri();
+    prismaService = new PrismaService();
     await prismaService.$connect();
   }, 60_000);
 
