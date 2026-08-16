@@ -1,0 +1,4 @@
+-- Migration inicial (etapa 0 — scaffold): nenhum model de domínio ainda.
+-- Só estabelece o histórico de migrations desde o início do projeto;
+-- os models (Producer, Farm, Season, Crop, PlantedCrop) chegam nas etapas 1-4,
+-- cada um com sua própria migration gerada via `prisma migrate dev`.
