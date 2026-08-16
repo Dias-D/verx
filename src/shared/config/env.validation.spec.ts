@@ -5,6 +5,7 @@ describe('validateEnv', () => {
     DATABASE_URL: 'postgresql://user:password@localhost:5432/verx',
     NODE_ENV: 'development',
     PORT: '3000',
+    REDIS_URL: 'redis://localhost:6379',
   };
 
   it('lança erro descritivo se DATABASE_URL estiver ausente', () => {
@@ -30,6 +31,7 @@ describe('validateEnv', () => {
     const configWithoutPort = {
       DATABASE_URL: validConfig.DATABASE_URL,
       NODE_ENV: validConfig.NODE_ENV,
+      REDIS_URL: validConfig.REDIS_URL,
     };
 
     const result = validateEnv(configWithoutPort);
@@ -39,5 +41,32 @@ describe('validateEnv', () => {
 
   it('aceita uma configuração válida completa sem lançar erro', () => {
     expect(() => validateEnv(validConfig)).not.toThrow();
+  });
+
+  it('lança erro descritivo se REDIS_URL estiver ausente', () => {
+    const configWithoutRedisUrl = {
+      DATABASE_URL: validConfig.DATABASE_URL,
+      NODE_ENV: validConfig.NODE_ENV,
+      PORT: validConfig.PORT,
+    };
+
+    expect(() => validateEnv(configWithoutRedisUrl)).toThrow(/REDIS_URL/);
+  });
+
+  it('aplica default 300 quando DASHBOARD_CACHE_TTL_SECONDS não é informado', () => {
+    const configWithoutTtl = { ...validConfig };
+
+    const result = validateEnv(configWithoutTtl);
+
+    expect(result.DASHBOARD_CACHE_TTL_SECONDS).toBe(300);
+  });
+
+  it('aceita DASHBOARD_CACHE_TTL_SECONDS numérico explícito', () => {
+    const result = validateEnv({
+      ...validConfig,
+      DASHBOARD_CACHE_TTL_SECONDS: '60',
+    });
+
+    expect(result.DASHBOARD_CACHE_TTL_SECONDS).toBe(60);
   });
 });
