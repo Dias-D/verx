@@ -253,11 +253,25 @@ describe('PlantedCrops (e2e)', () => {
     );
   });
 
-  // Depende do endpoint de Season da etapa 4 (ainda não existe quando este
-  // e2e roda pela primeira vez) — fica pendente, não bloqueia o gate desta
-  // etapa (ver 03-cultura-plantada.md, passo 7.1). Fechado quando
-  // 04-safra-cultura.md estiver pronto.
-  it.todo(
-    'DELETE /seasons/:id de uma season referenciada por um planted-crop retorna 409/erro (via endpoint da etapa 4)',
-  );
+  // Fechado agora que o endpoint de Season existe (etapa 4,
+  // 04-safra-cultura.md) — era deixado `it.todo` porque o SeasonsController
+  // ainda não existia quando este e2e nasceu (ver 03-cultura-plantada.md,
+  // passo 7.1). O comportamento do `Restrict` em si já era coberto de
+  // verdade no teste de integração do adapter desde a etapa 3; isto só
+  // fecha o fluxo HTTP fim-a-fim.
+  it('DELETE /seasons/:id de uma season referenciada por um planted-crop retorna 409', async () => {
+    const farmId = await createFarm();
+    const { seasonId, cropId } = await createSeasonAndCrop();
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/farms/${farmId}/planted-crops`)
+      .send({ items: [{ seasonId, cropId }] })
+      .expect(201);
+
+    const response = await request(app.getHttpServer()).delete(
+      `/api/v1/seasons/${seasonId}`,
+    );
+
+    expect(response.status).toBe(409);
+  });
 });

@@ -5,6 +5,8 @@ import { PrismaModule } from './shared/prisma/prisma.module';
 import { ProducersModule } from './producers/producers.module';
 import { FarmsModule } from './farms/farms.module';
 import { PlantedCropsModule } from './planted-crops/planted-crops.module';
+import { SeasonsModule } from './seasons/seasons.module';
+import { CropsModule } from './crops/crops.module';
 
 @Module({
   imports: [
@@ -16,6 +18,8 @@ import { PlantedCropsModule } from './planted-crops/planted-crops.module';
     ProducersModule,
     FarmsModule,
     PlantedCropsModule,
+    SeasonsModule,
+    CropsModule,
   ],
 })
 export class AppModule {}
