@@ -4,6 +4,7 @@ import { validateEnv } from './shared/config/env.validation';
 import { PrismaModule } from './shared/prisma/prisma.module';
 import { ProducersModule } from './producers/producers.module';
 import { FarmsModule } from './farms/farms.module';
+import { PlantedCropsModule } from './planted-crops/planted-crops.module';
 
 @Module({
   imports: [
@@ -14,6 +15,7 @@ import { FarmsModule } from './farms/farms.module';
     PrismaModule,
     ProducersModule,
     FarmsModule,
+    PlantedCropsModule,
   ],
 })
 export class AppModule {}
