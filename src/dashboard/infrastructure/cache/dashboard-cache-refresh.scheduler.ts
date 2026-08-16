@@ -11,10 +11,8 @@
 import { Inject, Injectable, OnApplicationBootstrap } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { SchedulerRegistry } from '@nestjs/schedule';
-import {
-  DASHBOARD_CACHE_PORT,
-  DashboardCachePort,
-} from '../../domain/dashboard-cache.port';
+import { DASHBOARD_CACHE_PORT } from '../../domain/dashboard-cache.port';
+import type { DashboardCachePort } from '../../domain/dashboard-cache.port';
 import { DASHBOARD_READ_PORT } from '../../domain/dashboard.read.port';
 import type { DashboardReadPort } from '../../domain/dashboard.read.port';
 
