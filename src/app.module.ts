@@ -7,6 +7,7 @@ import { FarmsModule } from './farms/farms.module';
 import { PlantedCropsModule } from './planted-crops/planted-crops.module';
 import { SeasonsModule } from './seasons/seasons.module';
 import { CropsModule } from './crops/crops.module';
+import { DashboardModule } from './dashboard/dashboard.module';
 
 @Module({
   imports: [
@@ -20,6 +21,7 @@ import { CropsModule } from './crops/crops.module';
     PlantedCropsModule,
     SeasonsModule,
     CropsModule,
+    DashboardModule,
   ],
 })
 export class AppModule {}
