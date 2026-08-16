@@ -22,5 +22,63 @@ model Producer {
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
+  farms Farm[]
+
   @@map("producers")
+}
+
+// Unidades federativas do Brasil — valores são as siglas oficiais, não
+// traduzidos (ver arquitetura.md#nomenclatura-de-código-inglês).
+enum BrazilianState {
+  AC
+  AL
+  AP
+  AM
+  BA
+  CE
+  DF
+  ES
+  GO
+  MA
+  MT
+  MS
+  MG
+  PA
+  PB
+  PR
+  PE
+  PI
+  RJ
+  RN
+  RS
+  RO
+  RR
+  SC
+  SP
+  SE
+  TO
+}
+
+// Propriedade rural vinculada a um Producer. Regra de negócio central do
+// enunciado (soma de área agricultável + vegetação <= área total) é
+// validada em DTO e Service (ver praticas.md#onde-cada-regra-de-negócio-vive),
+// não pelo banco. `state` é indexado por ser a coluna de GROUP BY do
+// dashboard (ver arquitetura.md#modelo-de-dados).
+model Farm {
+  id                     String         @id @default(uuid())
+  name                   String
+  city                   String
+  state                  BrazilianState
+  totalAreaHectares      Decimal        @db.Decimal(10, 2)
+  arableAreaHectares     Decimal        @db.Decimal(10, 2)
+  vegetationAreaHectares Decimal        @db.Decimal(10, 2)
+  producerId             String
+  createdAt              DateTime       @default(now())
+  updatedAt              DateTime       @updatedAt
+
+  producer Producer @relation(fields: [producerId], references: [id], onDelete: Cascade)
+
+  @@index([producerId])
+  @@index([state])
+  @@map("farms")
 }

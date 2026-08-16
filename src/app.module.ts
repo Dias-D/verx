@@ -3,6 +3,7 @@ import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './shared/config/env.validation';
 import { PrismaModule } from './shared/prisma/prisma.module';
 import { ProducersModule } from './producers/producers.module';
+import { FarmsModule } from './farms/farms.module';
 
 @Module({
   imports: [
@@ -12,6 +13,7 @@ import { ProducersModule } from './producers/producers.module';
     }),
     PrismaModule,
     ProducersModule,
+    FarmsModule,
   ],
 })
 export class AppModule {}
