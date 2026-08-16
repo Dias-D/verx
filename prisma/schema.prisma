@@ -76,9 +76,55 @@ model Farm {
   createdAt              DateTime       @default(now())
   updatedAt              DateTime       @updatedAt
 
-  producer Producer @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  producer     Producer      @relation(fields: [producerId], references: [id], onDelete: Cascade)
+  plantedCrops PlantedCrop[]
 
   @@index([producerId])
   @@index([state])
   @@map("farms")
+}
+
+// Catálogo mínimo de safras — só schema nesta etapa (ver
+// implementacao/etapas/03-cultura-plantada.md, nota de sequenciamento). A
+// camada de application/infrastructure (CRUD completo) é escopo da etapa 4.
+model Season {
+  id   String @id @default(uuid())
+  year Int    @unique
+
+  plantedCrops PlantedCrop[]
+
+  @@map("seasons")
+}
+
+// Catálogo mínimo de culturas — mesma nota de sequenciamento do Season acima.
+model Crop {
+  id   String @id @default(uuid())
+  name String @unique
+
+  plantedCrops PlantedCrop[]
+
+  @@map("crops")
+}
+
+// Join entity farm+season+crop (ver arquitetura.md#modelo-de-dados).
+// onDelete diferenciado: Cascade só em farmId (apagar a farm apaga seus
+// plantios); Restrict em seasonId/cropId (não deixa apagar um item de
+// catálogo referenciado por um plantio — são registros históricos).
+model PlantedCrop {
+  id        String   @id @default(uuid())
+  farmId    String
+  seasonId  String
+  cropId    String
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  farm   Farm   @relation(fields: [farmId], references: [id], onDelete: Cascade)
+  season Season @relation(fields: [seasonId], references: [id], onDelete: Restrict)
+  crop   Crop   @relation(fields: [cropId], references: [id], onDelete: Restrict)
+
+  @@unique([farmId, seasonId, cropId])
+  @@index([farmId])
+  @@index([seasonId])
+  @@index([cropId])
+  @@map("planted_crops")
 }
