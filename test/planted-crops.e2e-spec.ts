@@ -202,6 +202,22 @@ describe('PlantedCrops (e2e)', () => {
     expect(response.status).toBe(404);
   });
 
+  it('POST /farms/:farmId/planted-crops com combinação já associada à farm (requisição separada) retorna 409', async () => {
+    const farmId = await createFarm();
+    const { seasonId, cropId } = await createSeasonAndCrop();
+
+    await request(app.getHttpServer())
+      .post(`/api/v1/farms/${farmId}/planted-crops`)
+      .send({ items: [{ seasonId, cropId }] })
+      .expect(201);
+
+    const response = await request(app.getHttpServer())
+      .post(`/api/v1/farms/${farmId}/planted-crops`)
+      .send({ items: [{ seasonId, cropId }] });
+
+    expect(response.status).toBe(409);
+  });
+
   it('GET /farms/:farmId/planted-crops pagina os resultados de uma farm', async () => {
     const farmId = await createFarm();
     const { seasonId, cropId } = await createSeasonAndCrop();

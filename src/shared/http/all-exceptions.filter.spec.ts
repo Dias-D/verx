@@ -2,6 +2,7 @@
 // o e2e (test/exception-filter.e2e-spec.ts) cobre o fluxo HTTP real.
 
 import { ArgumentsHost, HttpException, HttpStatus } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Logger } from 'nestjs-pino';
 import { AllExceptionsFilter } from './all-exceptions.filter';
 
@@ -90,5 +91,66 @@ describe('AllExceptionsFilter', () => {
     filter.catch(error, host);
 
     expect(loggerMock.error).toHaveBeenCalledTimes(1);
+  });
+
+  describe('falha de conexão com o banco (etapa 6.1)', () => {
+    it('mapeia PrismaClientInitializationError para 503, sem vazar detalhes de conexão no corpo', () => {
+      const { host, response } = buildHost('/api/v1/producers');
+      const connectionError = new Prisma.PrismaClientInitializationError(
+        "Can't reach database server at postgres:5432",
+        '6.19.3',
+        'P1001',
+      );
+
+      filter.catch(connectionError, host);
+
+      expect(response.status).toHaveBeenCalledWith(503);
+      const body = response.json.mock.calls[0][0];
+      expect(body.statusCode).toBe(503);
+      expect(body.message).not.toContain('postgres:5432');
+      expect(body).not.toHaveProperty('stack');
+    });
+
+    it.each(['P1001', 'P1002', 'P1008', 'P1017'])(
+      'mapeia PrismaClientKnownRequestError com código de conectividade %s para 503',
+      (code) => {
+        const { host, response } = buildHost('/api/v1/producers');
+        const connectionError = new Prisma.PrismaClientKnownRequestError(
+          'connection issue',
+          { code, clientVersion: '6.19.3' },
+        );
+
+        filter.catch(connectionError, host);
+
+        expect(response.status).toHaveBeenCalledWith(503);
+        const body = response.json.mock.calls[0][0];
+        expect(body.statusCode).toBe(503);
+      },
+    );
+
+    it('não confunde um PrismaClientKnownRequestError de negócio (ex.: P2002) com falha de conexão — continua 500 genérico', () => {
+      const { host, response } = buildHost('/api/v1/producers');
+      const businessError = new Prisma.PrismaClientKnownRequestError(
+        'Unique constraint failed',
+        { code: 'P2002', clientVersion: '6.19.3' },
+      );
+
+      filter.catch(businessError, host);
+
+      expect(response.status).toHaveBeenCalledWith(500);
+    });
+
+    it('sempre loga a exceção original de conectividade, mesmo mapeando para 503', () => {
+      const { host } = buildHost('/api/v1/producers');
+      const connectionError = new Prisma.PrismaClientInitializationError(
+        "Can't reach database server",
+        '6.19.3',
+        'P1001',
+      );
+
+      filter.catch(connectionError, host);
+
+      expect(loggerMock.error).toHaveBeenCalledTimes(1);
+    });
   });
 });

@@ -1,9 +1,13 @@
 // Exception filter global — padroniza o FORMATO do corpo de erro devolvido
-// ao cliente. O mapeamento fino de cenário de negócio -> status HTTP é a
-// etapa opcional 6.1 (não aqui): um `HttpException` já lançado (404, 409...)
-// mantém seu status/mensagem originais; qualquer outro erro vira 500
-// genérico. Stack trace completo só vai pro log (via pino), nunca no corpo
-// da resposta — ver etapas/06-observabilidade.md.
+// ao cliente e, desde a etapa 6.1, também mapeia cenários de falha real para
+// o status HTTP mais preciso: um `HttpException` já lançado pelos módulos
+// (404, 409...) mantém seu status/mensagem originais (é ali que a maioria
+// dos cenários da tabela de praticas.md#observabilidade já é resolvida,
+// module a module); uma falha de conectividade do Prisma (banco
+// inalcançável/timeout) vira `503 Service Unavailable`; qualquer outro erro
+// desconhecido continua como 500 genérico. Stack trace completo só vai pro
+// log (via pino), nunca no corpo da resposta — ver etapas/06-observabilidade.md
+// e etapas/06.1-contrato-erros.md.
 
 import {
   ArgumentsHost,
@@ -12,6 +16,7 @@ import {
   HttpException,
   HttpStatus,
 } from '@nestjs/common';
+import { Prisma } from '@prisma/client';
 import type { Request, Response } from 'express';
 import type { Logger } from 'nestjs-pino';
 
@@ -36,6 +41,29 @@ function extractMessage(exception: HttpException): string | string[] {
   return exception.message;
 }
 
+// Códigos de erro do Prisma que representam falha de CONECTIVIDADE com o
+// banco (servidor inalcançável, timeout, conexão fechada) — distintos dos
+// códigos de regra de negócio (P2002 unicidade, P2003 FK, P2025 not found),
+// que já são tratados pelos adapters de cada módulo e nunca chegam até aqui
+// sem já terem virado um `HttpException`. Ver
+// https://www.prisma.io/docs/orm/reference/error-reference#common.
+const DATABASE_CONNECTIVITY_ERROR_CODES = new Set([
+  'P1001', // Can't reach database server
+  'P1002', // Database server was reached but timed out
+  'P1008', // Operations timed out
+  'P1017', // Server has closed the connection
+]);
+
+function isDatabaseConnectivityError(exception: unknown): boolean {
+  if (exception instanceof Prisma.PrismaClientInitializationError) {
+    return true;
+  }
+  return (
+    exception instanceof Prisma.PrismaClientKnownRequestError &&
+    DATABASE_CONNECTIVITY_ERROR_CODES.has(exception.code)
+  );
+}
+
 @Catch()
 export class AllExceptionsFilter implements ExceptionFilter {
   constructor(private readonly logger: Logger) {}
@@ -46,12 +74,18 @@ export class AllExceptionsFilter implements ExceptionFilter {
     const request = ctx.getRequest<Request>();
 
     const isHttpException = exception instanceof HttpException;
-    const statusCode = isHttpException
-      ? exception.getStatus()
-      : HttpStatus.INTERNAL_SERVER_ERROR;
-    const message = isHttpException
-      ? extractMessage(exception)
-      : 'Internal server error';
+    let statusCode: number;
+    let message: string | string[];
+    if (isHttpException) {
+      statusCode = exception.getStatus();
+      message = extractMessage(exception);
+    } else if (isDatabaseConnectivityError(exception)) {
+      statusCode = HttpStatus.SERVICE_UNAVAILABLE;
+      message = 'Service temporarily unavailable';
+    } else {
+      statusCode = HttpStatus.INTERNAL_SERVER_ERROR;
+      message = 'Internal server error';
+    }
 
     this.logger.error(
       { err: exception, statusCode, path: request.url },
