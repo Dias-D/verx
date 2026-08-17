@@ -3,7 +3,7 @@
 // — o indicador de Redis entra na etapa 5.1, quando o serviço existir.
 
 import { Controller, Get } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiOperation, ApiTags } from '@nestjs/swagger';
 import {
   HealthCheck,
   HealthCheckResult,
@@ -21,6 +21,10 @@ export class HealthController {
 
   @Get()
   @HealthCheck()
+  @ApiOperation({
+    summary: 'Healthcheck — conectividade com o banco (Postgres)',
+  })
+  @ApiOkResponse({ description: 'API e banco de dados saudáveis.' })
   check(): Promise<HealthCheckResult> {
     return this.healthCheckService.check([
       () => this.prismaHealthIndicator.isHealthy('database'),

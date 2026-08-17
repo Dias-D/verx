@@ -16,7 +16,14 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { CreateFarmDto } from '../../application/dto/create-farm.dto';
 import { FindFarmsQueryDto } from '../../application/dto/find-farms-query.dto';
 import { UpdateFarmDto } from '../../application/dto/update-farm.dto';
@@ -29,6 +36,17 @@ export class FarmsController {
   constructor(private readonly service: FarmsService) {}
 
   @Post()
+  @ApiOperation({
+    summary: 'Cadastra uma propriedade rural vinculada a um producer',
+  })
+  @ApiCreatedResponse({ description: 'Farm criada com sucesso.' })
+  @ApiBadRequestResponse({
+    description:
+      'A soma de arableAreaHectares + vegetationAreaHectares ultrapassa totalAreaHectares.',
+  })
+  @ApiNotFoundResponse({
+    description: 'producerId não corresponde a nenhum produtor.',
+  })
   async create(@Body() dto: CreateFarmDto) {
     try {
       return await this.service.create(dto);
@@ -41,17 +59,32 @@ export class FarmsController {
   }
 
   @Get()
+  @ApiOperation({
+    summary:
+      'Lista farms (paginado), com filtros opcionais producerId/state/city',
+  })
+  @ApiOkResponse({ description: 'Lista paginada de farms.' })
   findMany(@Query() query: FindFarmsQueryDto) {
     const { page, limit, producerId, state, city } = query;
     return this.service.findMany({ producerId, state, city }, { page, limit });
   }
 
   @Get(':id')
+  @ApiOperation({ summary: 'Busca uma farm pelo id' })
+  @ApiOkResponse({ description: 'Farm encontrada.' })
+  @ApiNotFoundResponse({ description: 'Farm não encontrada.' })
   findOne(@Param('id') id: string) {
     return this.service.findById(id);
   }
 
   @Patch(':id')
+  @ApiOperation({ summary: 'Atualiza parcialmente uma farm' })
+  @ApiOkResponse({ description: 'Farm atualizada.' })
+  @ApiBadRequestResponse({
+    description:
+      'A soma de área agricultável + vegetação (mesclada com o estado persistido) ultrapassa a área total.',
+  })
+  @ApiNotFoundResponse({ description: 'Farm não encontrada.' })
   async update(@Param('id') id: string, @Body() dto: UpdateFarmDto) {
     try {
       return await this.service.update(id, dto);
@@ -65,6 +98,8 @@ export class FarmsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove uma farm (cascade em seus planted-crops)' })
+  @ApiNotFoundResponse({ description: 'Farm não encontrada.' })
   remove(@Param('id') id: string) {
     return this.service.delete(id);
   }

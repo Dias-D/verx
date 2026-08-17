@@ -13,7 +13,7 @@ COPY package.json yarn.lock ./
 # existir (mesma lógica do postinstall do package.json, ver tecnologias.md).
 RUN yarn install --immutable --mode=skip-build
 
-# ---- build: gera o Prisma Client e compila TypeScript ----
+# ---- build: gera o Prisma Client e compila TypeScript (app + seed) ----
 FROM node:20-alpine AS build
 WORKDIR /app
 RUN corepack enable
@@ -23,6 +23,10 @@ COPY .yarn ./.yarn
 COPY . .
 RUN yarn prisma generate
 RUN yarn build
+# prisma/seed.ts fica fora de sourceRoot (src/) do nest build — compilado à
+# parte, para JS puro, para não precisar de ts-node/toolchain de dev na
+# imagem de produção (ver arquitetura.md#seed-de-dados-de-demonstração).
+RUN yarn build:seed
 
 # ---- production: imagem final, só o necessário para rodar ----
 # CMD usa o binário do prisma direto (node_modules/.bin), sem depender de yarn/
@@ -37,4 +41,8 @@ COPY --from=build /app/package.json ./package.json
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/main.js"]
+# migrate deploy não roda seed sozinho — passo explícito depois, com o seed
+# já compilado (dist/prisma/seed.js), antes de subir a aplicação (ver
+# arquitetura.md#seed-de-dados-de-demonstração). Idempotente: seguro em
+# todo restart do container, não só na primeira vez.
+CMD ["sh", "-c", "node_modules/.bin/prisma migrate deploy && node dist/prisma/seed.js && node dist/main.js"]

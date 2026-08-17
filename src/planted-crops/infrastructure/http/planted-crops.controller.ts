@@ -19,7 +19,15 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { ApiTags } from '@nestjs/swagger';
+import {
+  ApiBadRequestResponse,
+  ApiConflictResponse,
+  ApiCreatedResponse,
+  ApiNotFoundResponse,
+  ApiOkResponse,
+  ApiOperation,
+  ApiTags,
+} from '@nestjs/swagger';
 import { PaginationQueryDto } from '../../../common/dto/pagination-query.dto';
 import { CreatePlantedCropBatchDto } from '../../application/dto/create-planted-crop-batch.dto';
 import { PlantedCropsService } from '../../application/planted-crops.service';
@@ -34,6 +42,21 @@ export class PlantedCropsController {
   constructor(private readonly service: PlantedCropsService) {}
 
   @Post()
+  @ApiOperation({
+    summary:
+      'Registra um lote de culturas plantadas (farm+season+crop) para a farm',
+  })
+  @ApiCreatedResponse({ description: 'Lote registrado com sucesso.' })
+  @ApiBadRequestResponse({
+    description: 'Item duplicado dentro do próprio lote enviado.',
+  })
+  @ApiNotFoundResponse({
+    description:
+      'A farm, ou alguma season/crop referenciada no lote, não existe.',
+  })
+  @ApiConflictResponse({
+    description: 'Combinação farm+season+crop já registrada anteriormente.',
+  })
   async createMany(
     @Param('farmId') farmId: string,
     @Body() dto: CreatePlantedCropBatchDto,
@@ -53,6 +76,8 @@ export class PlantedCropsController {
   }
 
   @Get()
+  @ApiOperation({ summary: 'Lista culturas plantadas de uma farm (paginado)' })
+  @ApiOkResponse({ description: 'Lista paginada de planted-crops da farm.' })
   findByFarm(
     @Param('farmId') farmId: string,
     @Query() query: PaginationQueryDto,
@@ -65,6 +90,10 @@ export class PlantedCropsController {
 
   @Delete(':id')
   @HttpCode(HttpStatus.NO_CONTENT)
+  @ApiOperation({ summary: 'Remove um vínculo de cultura plantada' })
+  @ApiNotFoundResponse({
+    description: 'Vínculo de cultura plantada não encontrado.',
+  })
   async remove(@Param('id') id: string) {
     try {
       await this.service.delete(id);
