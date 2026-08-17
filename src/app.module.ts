@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './shared/config/env.validation';
+import { LoggerModule } from './shared/logger/logger.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
+import { HealthModule } from './health/health.module';
 import { ProducersModule } from './producers/producers.module';
 import { FarmsModule } from './farms/farms.module';
 import { PlantedCropsModule } from './planted-crops/planted-crops.module';
@@ -15,7 +17,9 @@ import { DashboardModule } from './dashboard/dashboard.module';
       isGlobal: true,
       validate: validateEnv,
     }),
+    LoggerModule,
     PrismaModule,
+    HealthModule,
     ProducersModule,
     FarmsModule,
     PlantedCropsModule,

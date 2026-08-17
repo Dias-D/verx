@@ -3,6 +3,7 @@
 
 import { ConflictException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
+import { Logger } from 'nestjs-pino';
 import {
   PRODUCER_REPOSITORY,
   ProducerRepositoryPort,
@@ -20,6 +21,7 @@ describe('ProducersService', () => {
     delete: jest.fn(),
     findMany: jest.fn(),
   };
+  const loggerMock: Pick<Logger, 'log'> = { log: jest.fn() };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -27,6 +29,7 @@ describe('ProducersService', () => {
       providers: [
         ProducersService,
         { provide: PRODUCER_REPOSITORY, useValue: fakeRepository },
+        { provide: Logger, useValue: loggerMock },
       ],
     }).compile();
     service = module.get(ProducersService);
@@ -51,6 +54,22 @@ describe('ProducersService', () => {
         document: producer.document,
       });
       expect(result).toBe(producer);
+    });
+
+    it('loga o evento de negócio só com o id — nunca o document (ver praticas.md#observabilidade)', async () => {
+      const producer = buildProducer();
+      fakeRepository.findByDocument.mockResolvedValue(null);
+      fakeRepository.create.mockResolvedValue(producer);
+
+      await service.create({
+        name: producer.name,
+        document: producer.document,
+      });
+
+      expect(loggerMock.log).toHaveBeenCalledWith(
+        { producerId: producer.id },
+        'Producer created',
+      );
     });
 
     it('rejeita a criação quando o documento já existe (ConflictException)', async () => {

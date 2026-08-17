@@ -1,9 +1,13 @@
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { NestFactory } from '@nestjs/core';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
+import { Logger } from 'nestjs-pino';
 import { AppModule } from './app.module';
+import { AllExceptionsFilter } from './shared/http/all-exceptions.filter';
 
 export function configureApp(app: INestApplication): void {
+  app.useLogger(app.get(Logger));
+
   app.setGlobalPrefix('api/v1');
 
   app.useGlobalPipes(
@@ -13,6 +17,8 @@ export function configureApp(app: INestApplication): void {
       transform: true,
     }),
   );
+
+  app.useGlobalFilters(new AllExceptionsFilter(app.get(Logger)));
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('Brain Agriculture API')
@@ -24,7 +30,7 @@ export function configureApp(app: INestApplication): void {
 }
 
 async function bootstrap(): Promise<void> {
-  const app = await NestFactory.create(AppModule);
+  const app = await NestFactory.create(AppModule, { bufferLogs: true });
   configureApp(app);
   await app.listen(process.env.PORT ?? 3000);
 }

@@ -8,6 +8,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { Producer } from '../domain/producer.entity';
 import { PRODUCER_REPOSITORY } from '../domain/producer.repository.port';
 import type { ProducerRepositoryPort } from '../domain/producer.repository.port';
@@ -24,6 +25,7 @@ export class ProducersService {
   constructor(
     @Inject(PRODUCER_REPOSITORY)
     private readonly repository: ProducerRepositoryPort,
+    private readonly logger: Logger,
   ) {}
 
   async create(dto: CreateProducerDto): Promise<Producer> {
@@ -37,7 +39,15 @@ export class ProducersService {
         'A producer with this document already exists',
       );
     }
-    return this.repository.create({ name: dto.name, document: dto.document });
+    const producer = await this.repository.create({
+      name: dto.name,
+      document: dto.document,
+    });
+    // Evento de negócio logado só com o id — o document (CPF/CNPJ) nunca
+    // vai pro log, nem por engano (ver praticas.md#observabilidade e
+    // src/shared/logger/logger-redaction.spec.ts).
+    this.logger.log({ producerId: producer.id }, 'Producer created');
+    return producer;
   }
 
   async findById(id: string): Promise<Producer> {
