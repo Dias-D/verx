@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { validateEnv } from './shared/config/env.validation';
+import { RedisCacheModule } from './shared/cache/redis-cache.module';
 import { LoggerModule } from './shared/logger/logger.module';
 import { PrismaModule } from './shared/prisma/prisma.module';
 import { HealthModule } from './health/health.module';
@@ -19,6 +20,7 @@ import { DashboardModule } from './dashboard/dashboard.module';
     }),
     LoggerModule,
     PrismaModule,
+    RedisCacheModule,
     HealthModule,
     ProducersModule,
     FarmsModule,

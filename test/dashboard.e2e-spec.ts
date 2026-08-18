@@ -1,9 +1,17 @@
-// E2E do módulo Dashboard — Supertest contra a aplicação real, Postgres real
-// via Testcontainers (nunca sqlite/in-memory, ver praticas.md#testes).
+// E2E do módulo Dashboard — Supertest contra a aplicação real, Postgres e
+// Redis reais via Testcontainers (nunca sqlite/in-memory nem mock de cache,
+// ver praticas.md#testes e 05.1-cache-dashboard.md "Se travar").
 //
-// Cobre GET /dashboard 200 com o formato completo do DashboardSnapshot,
-// populado via as próprias rotas HTTP (producer -> farm -> planted-crop),
-// confirmando que os totais refletem o que foi cadastrado de ponta a ponta.
+// Cobre o formato completo do DashboardSnapshot populado via as próprias
+// rotas HTTP (producer -> farm -> planted-crop), e o item central do gate da
+// sub-etapa 5.1: GET /dashboard nunca recalcula por requisição fora do cold
+// start — só o DashboardCacheRefreshScheduler (rodando em bootstrap e depois
+// periodicamente, fora do tráfego) chama a agregação de verdade. Isso é
+// provado espionando o método real da porta de leitura
+// (DASHBOARD_READ_PORT.getSnapshot) que o Prisma adapter implementa, não um
+// stand-in — o adapter concreto continua sendo o mesmo usado em produção.
+// Também confirma (passo 5.3) que X-Request-Id continua presente mesmo em
+// resposta servida do cache.
 
 import { execSync } from 'node:child_process';
 import { INestApplication } from '@nestjs/common';
@@ -12,10 +20,13 @@ import {
   PostgreSqlContainer,
   StartedPostgreSqlContainer,
 } from '@testcontainers/postgresql';
+import { RedisContainer, StartedRedisContainer } from '@testcontainers/redis';
 import { cpf } from 'cpf-cnpj-validator';
 import request from 'supertest';
 import { App } from 'supertest/types';
 import { AppModule } from '../src/app.module';
+import { DASHBOARD_READ_PORT } from '../src/dashboard/domain/dashboard.read.port';
+import type { DashboardReadPort } from '../src/dashboard/domain/dashboard.read.port';
 import { configureApp } from '../src/main';
 
 interface DashboardResponseBody {
@@ -42,14 +53,26 @@ interface CropResponseBody {
   id: string;
 }
 
+// TTL/intervalo de refresh curtos (segundos) só neste ambiente de teste, pra
+// observar o mecanismo de verdade sem o teste demorar os 5 minutos
+// configurados por padrão em produção (DASHBOARD_CACHE_TTL_SECONDS).
+const CACHE_TTL_SECONDS = 3;
+
 describe('Dashboard (e2e)', () => {
   let app: INestApplication<App>;
-  let container: StartedPostgreSqlContainer;
+  let postgresContainer: StartedPostgreSqlContainer;
+  let redisContainer: StartedRedisContainer;
+  let getSnapshotSpy: jest.SpiedFunction<DashboardReadPort['getSnapshot']>;
 
   beforeAll(async () => {
-    container = await new PostgreSqlContainer('postgres:16-alpine').start();
-    const databaseUrl = container.getConnectionUri();
+    postgresContainer = await new PostgreSqlContainer(
+      'postgres:16-alpine',
+    ).start();
+    redisContainer = await new RedisContainer('redis:7-alpine').start();
+    const databaseUrl = postgresContainer.getConnectionUri();
     process.env.DATABASE_URL = databaseUrl;
+    process.env.REDIS_URL = redisContainer.getConnectionUrl();
+    process.env.DASHBOARD_CACHE_TTL_SECONDS = String(CACHE_TTL_SECONDS);
 
     execSync('yarn prisma migrate deploy', {
       env: { ...process.env, DATABASE_URL: databaseUrl },
@@ -60,17 +83,26 @@ describe('Dashboard (e2e)', () => {
       imports: [AppModule],
     }).compile();
 
+    const readPort = moduleFixture.get<DashboardReadPort>(DASHBOARD_READ_PORT);
+    getSnapshotSpy = jest.spyOn(readPort, 'getSnapshot');
+
     app = moduleFixture.createNestApplication();
     configureApp(app);
+    // app.init() dispara onApplicationBootstrap -> o scheduler já roda o
+    // primeiro refresh aqui, então o cache já chega aquecido no primeiro
+    // teste (a spy já registra essa primeira chamada).
     await app.init();
   }, 120_000);
 
   afterAll(async () => {
     await app.close();
-    await container.stop();
+    await postgresContainer.stop();
+    await redisContainer.stop();
   });
 
-  it('GET /dashboard retorna 200 com tudo zerado quando o banco está vazio', async () => {
+  it('GET /dashboard retorna 200 com tudo zerado quando o banco está vazio (cache já aquecido pelo bootstrap)', async () => {
+    expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
+
     const response = await request(app.getHttpServer()).get(
       '/api/v1/dashboard',
     );
@@ -87,9 +119,32 @@ describe('Dashboard (e2e)', () => {
         { type: 'vegetation', hectares: 0 },
       ],
     });
+    // A própria requisição não deve ter disparado nenhum recálculo.
+    expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
   });
 
-  it('GET /dashboard reflete produtor/fazenda/plantio cadastrados via HTTP', async () => {
+  it('GET /dashboard inclui X-Request-Id mesmo servido do cache', async () => {
+    const response = await request(app.getHttpServer()).get(
+      '/api/v1/dashboard',
+    );
+
+    expect(response.status).toBe(200);
+    const requestId = response.headers['x-request-id'];
+    expect(typeof requestId).toBe('string');
+    expect(requestId.length).toBeGreaterThan(0);
+  });
+
+  it('GET /dashboard não recalcula em requisições repetidas dentro da janela de TTL', async () => {
+    const callsBefore = getSnapshotSpy.mock.calls.length;
+
+    await request(app.getHttpServer()).get('/api/v1/dashboard').expect(200);
+    await request(app.getHttpServer()).get('/api/v1/dashboard').expect(200);
+    await request(app.getHttpServer()).get('/api/v1/dashboard').expect(200);
+
+    expect(getSnapshotSpy.mock.calls.length).toBe(callsBefore);
+  });
+
+  it('GET /dashboard reflete dados cadastrados via HTTP só depois que o refresh agendado roda (TTL expirado), sem que a própria requisição recalcule', async () => {
     const seasonCreated = await request(app.getHttpServer())
       .post('/api/v1/seasons')
       .send({ year: 2050 });
@@ -123,9 +178,22 @@ describe('Dashboard (e2e)', () => {
       .send({ items: [{ seasonId, cropId }] })
       .expect(201);
 
+    // Logo após cadastrar, o cache ainda está com o valor antigo (não
+    // recalcula por requisição) — só espera o refresh agendado rodar de
+    // novo, fora do tráfego, dentro da janela de TTL configurada.
+    await new Promise((resolve) =>
+      setTimeout(resolve, (CACHE_TTL_SECONDS + 1) * 1000),
+    );
+
+    const callsBeforeRequest = getSnapshotSpy.mock.calls.length;
+    expect(callsBeforeRequest).toBeGreaterThan(1); // o scheduler já rodou de novo em background
+
     const response = await request(app.getHttpServer()).get(
       '/api/v1/dashboard',
     );
+
+    // A própria requisição não chamou a agregação de novo.
+    expect(getSnapshotSpy.mock.calls.length).toBe(callsBeforeRequest);
 
     expect(response.status).toBe(200);
     const body = response.body as DashboardResponseBody;
@@ -146,5 +214,5 @@ describe('Dashboard (e2e)', () => {
         expect.objectContaining({ type: 'vegetation' }),
       ]),
     );
-  });
+  }, 15_000);
 });

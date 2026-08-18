@@ -24,6 +24,13 @@ export class EnvironmentVariables {
 
   @IsNumber()
   PORT: number = 3000;
+
+  @IsString()
+  @IsNotEmpty()
+  REDIS_URL!: string;
+
+  @IsNumber()
+  DASHBOARD_CACHE_TTL_SECONDS: number = 300;
 }
 
 export function validateEnv(

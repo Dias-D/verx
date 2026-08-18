@@ -13,16 +13,17 @@ cp .env.example .env   # ajuste se necessário; os defaults já funcionam com o 
 docker compose up --build
 ```
 
-Isso sobe dois serviços (`docker-compose.yml`):
+Isso sobe três serviços (`docker-compose.yml`):
 
 - `postgres` (`verx-postgres`, `postgres:16-alpine`) — fonte de verdade dos dados, com healthcheck e volume nomeado.
-- `api` (`verx-api`) — build multi-stage (`Dockerfile`), roda `prisma migrate deploy` seguido do seed de demonstração (idempotente, ver abaixo) e só então `node dist/main.js`.
+- `redis` (`verx-redis`, `redis:7-alpine`) — store do cache do dashboard (stale-while-revalidate, ver abaixo), com healthcheck.
+- `api` (`verx-api`) — build multi-stage (`Dockerfile`), roda `prisma migrate deploy` seguido do seed de demonstração (idempotente, ver abaixo) e só então `node dist/main.js`. Só sobe depois de `postgres` **e** `redis` ficarem `healthy`.
 
 Depois de subir (aguarde o healthcheck de `api` ficar `healthy`, ~15-20s):
 
 - **Swagger/OpenAPI**: http://localhost:3000/docs
 - **API**: http://localhost:3000/api/v1 (ex.: `GET /api/v1/producers`, `GET /api/v1/dashboard`)
-- **Health check**: http://localhost:3000/api/v1/health
+- **Health check**: http://localhost:3000/api/v1/health (reporta Postgres **e** Redis)
 
 O ambiente já sobe com **dado de demonstração** (produtores, propriedades em múltiplos estados, safras, culturas e vínculos) — o Swagger e o `GET /dashboard` não nascem vazios. Ver [Seed de dados de demonstração](#seed-de-dados-de-demonstração) abaixo.
 
@@ -35,8 +36,12 @@ Ver `.env.example` (copiado para `.env`, nunca commitado):
 | `DATABASE_URL` | Connection string do PostgreSQL | `postgresql://verx:verx@localhost:5432/verx?schema=public` (ajustada para `postgres:5432` dentro do `docker-compose.yml`) |
 | `NODE_ENV` | `development` \| `test` \| `production` | `development` |
 | `PORT` | Porta HTTP da API | `3000` |
+| `REDIS_URL` | Connection string do Redis (cache do dashboard) | `redis://localhost:6379` (ajustada para `redis:6379` dentro do `docker-compose.yml`) |
+| `DASHBOARD_CACHE_TTL_SECONDS` | Janela de staleness do cache do dashboard e cadência do refresh agendado | `300` (5 min) |
 
 ### Rodando localmente sem Docker (desenvolvimento)
+
+Precisa também de um Redis local (`redis-server` ou `docker run -p 6379:6379 redis:7-alpine`) — a aplicação não sobe sem `REDIS_URL` apontando pra um Redis alcançável (ver [Variáveis de ambiente](#variáveis-de-ambiente)).
 
 ```bash
 corepack enable && corepack prepare yarn@4.14 --activate
@@ -51,7 +56,7 @@ Testes:
 
 ```bash
 yarn test        # unitários (services, validadores, entidades) — sem I/O
-yarn test:e2e     # integração (Testcontainers, Postgres real) + e2e HTTP (Supertest)
+yarn test:e2e     # integração (Testcontainers, Postgres + Redis reais) + e2e HTTP (Supertest)
 ```
 
 ## Decisões técnicas e por quê
@@ -63,10 +68,11 @@ yarn test:e2e     # integração (Testcontainers, Postgres real) + e2e HTTP (Sup
 - **Regra de negócio no Service, não só no DTO**: o DTO valida a *forma* do input (ex.: `class-validator` na soma de área do `create`); o Service é o dono autoritativo da regra (revalida a soma de área no `PATCH` mesclando com o estado persistido; checa unicidade de documento/year/name contra o banco) — nenhum outro ponto de entrada consegue burlar a regra.
 - **Paginação obrigatória** em todo endpoint de listagem (`{ data, meta: { total, page, limit } }`), teto de 100 itens por página — nenhum endpoint devolve a tabela inteira.
 - **Agregação sempre no banco**: `GET /dashboard` resolve `COUNT`/`SUM`/`GROUP BY` via query (Prisma `aggregate`/`groupBy` + um `$queryRaw` tipado para o `JOIN` de cultura), nunca carregando linhas inteiras para o Node somar em memória. Índices em toda FK usada em filtro/join e em `state` (coluna de `GROUP BY` do dashboard).
-- **Observabilidade**: logs estruturados (JSON) via `nestjs-pino`, com `X-Request-Id` de correlação por requisição (gerado ou propagado, sempre ecoado na resposta). CPF/CNPJ nunca aparece em log (redact explícito + disciplina de só logar IDs em eventos de negócio). Erros seguem um formato padronizado (`{ statusCode, message, timestamp, path }`) via `AllExceptionsFilter` global; falha de conectividade com o banco vira `503` em vez de `500` genérico. `GET /health` via `@nestjs/terminus` checa o Postgres.
+- **Cache do dashboard (stale-while-revalidate, Redis)**: `GET /dashboard` nunca recalcula por requisição — sempre lê um snapshot pré-computado, mantido fresco por um `DashboardCacheRefreshScheduler` (`@nestjs/schedule`) que roda uma vez no bootstrap e depois a cada `DASHBOARD_CACHE_TTL_SECONDS` (default 300s), fora do tráfego. Única exceção: cold start (cache ainda vazio, primeiro refresh ainda não rodou), quando cai num fallback síncrono. Store é sempre via `@nestjs/cache-manager` + `@keyv/redis` (nunca um cliente Redis cru como `ioredis`). A conexão usa `connectionTimeout` + `throwOnErrors` explícitos — sem isso, o store subjacente nunca desiste de conectar a um Redis inalcançável (retry com backoff indefinido) e qualquer operação trava para sempre; com o timeout, uma falha de Redis vira um erro rápido, capturado e logado, sem travar o boot da aplicação nem a resposta HTTP.
+- **Observabilidade**: logs estruturados (JSON) via `nestjs-pino`, com `X-Request-Id` de correlação por requisição (gerado ou propagado, sempre ecoado na resposta, inclusive em respostas servidas do cache). CPF/CNPJ nunca aparece em log (redact explícito + disciplina de só logar IDs em eventos de negócio); o scheduler/adapter do cache logam só metadados do evento (duração, sucesso/falha), nunca o snapshot inteiro. Erros seguem um formato padronizado (`{ statusCode, message, timestamp, path }`) via `AllExceptionsFilter` global; falha de conectividade com o banco vira `503` em vez de `500` genérico. `GET /health` via `@nestjs/terminus` checa o Postgres **e** o Redis.
 - **Contrato de erros consistente**: `409 Conflict` para violação de unicidade (documento/year/name duplicado, combinação farm+season+crop repetida) e para exclusão de `Season`/`Crop` referenciada por um `PlantedCrop` (histórico, não removido em cascata); `404 Not Found` para entidade/relacionamento inexistente; `400 Bad Request` para violação de forma ou da regra de área; `503 Service Unavailable` para banco inalcançável.
 - **Seed de dados de demonstração idempotente**: ver seção própria abaixo.
-- **Docker multi-stage** (`node:20-alpine`) + `docker-compose` com nomes fixos de container (`verx-api`, `verx-postgres`), healthchecks em ambos os serviços.
+- **Docker multi-stage** (`node:20-alpine`) + `docker-compose` com nomes fixos de container (`verx-api`, `verx-postgres`, `verx-redis`), healthchecks nos três serviços.
 
 ## Seed de dados de demonstração
 
@@ -84,7 +90,6 @@ Declaradas explicitamente, não escondidas — fora do escopo deste teste técni
 - **Sem autenticação/autorização**: qualquer cliente com acesso à API pode chamar qualquer endpoint. Um sistema real precisaria de auth (JWT/OAuth) e controle de acesso por produtor/organização.
 - **Sem multi-tenancy**: todos os dados vivem no mesmo schema, sem isolamento por cliente/organização.
 - **Sem filas/eventos**: toda operação é síncrona request-response; não há processamento assíncrono nem integração por eventos.
-- **Cache do dashboard (Redis) ainda não integrado neste repositório**: o desenho (stale-while-revalidate, refresh proativo a cada 5 minutos via job agendado, sem cache stampede) está definido e é a próxima etapa da execução — hoje o `GET /dashboard` sempre agrega direto do Postgres a cada requisição.
 - **Sem frontend**: a trilha deste teste técnico é backend apenas.
 - **Validação funcional via Swagger é manual**: não há um passo automatizado que navegue o Swagger UI — é um checklist informal de quem for avaliar.
 
