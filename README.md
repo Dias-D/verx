@@ -69,7 +69,9 @@ yarn test:e2e     # integração (Testcontainers, Postgres + Redis reais) + e2e 
 
 Vite + React 18 + TypeScript, Redux Toolkit, styled-components, React Router e Recharts; testes com Jest + ts-jest + React Testing Library. Projeto próprio dentro deste repositório (`frontend/`, package.json/yarn.lock independentes do backend), consumindo a API só por HTTP — nunca importa nada de `src/`.
 
-**Status atual**: fundação (estrutura de pastas em design atômico — `api/`, `store/`, `components/atoms|molecules|organisms|templates/`, `pages/`, `types/` —, Jest configurado, tema base do styled-components, store do Redux e `api/client.ts` encapsulando `fetch`). Ainda sem telas: dashboard e CRUD de produtor chegam nas próximas etapas.
+**Status atual**: fundação (F0) mais o dashboard completo, ponta a ponta (F1). Design atômico com cinco átomos (`Button`, `Card`, `Heading`, `Text`, `Spinner`), três moléculas (`StatCard`, `RefreshBar`, `ErrorNotice`), dois organismos (`StatsGrid`, `PieChartPanel`, reaproveitado três vezes) e um template (`PageLayout`) — só a página (`pages/Dashboard.tsx`) acessa a store, todo o resto recebe dados por props e é puro. `dashboardSlice` (Redux Toolkit, `createAsyncThunk`) expõe dados, status e erro; erro no refetch preserva o último snapshot bom em vez de limpar a tela (mesma filosofia do backend: servir o último dado válido em vez de devolver erro). CRUD de produtor (listar/criar/editar/excluir) chega na etapa F2 — por ora a rota `/produtores` é um placeholder.
+
+**Atualização manual do dashboard** — os dados vêm do cache do backend e a tela exibe o horário em que foram calculados (`calculatedAt`, gravado pelo `DashboardCacheRefreshScheduler` no momento do cálculo, não do fetch), com botão de atualizar sob controle do usuário. Evita requisições periódicas para dados que mudam por evento (escrita), não com o tempo, ao custo de o número em tela não ser instantâneo — o que fica explícito na própria interface ("Dados calculados às HH:mm" + "Atualização automática a cada 5 min"). Clicar em "Atualizar" busca o snapshot atual, não recalcula; o horário não mudar é comportamento esperado, não bug. Na rara janela em que o backend ainda não carimbou o snapshot (cold-start do cache, ver `decisoes-pendentes.md#1`), a tela mostra "Calculando dados..." em vez de um horário inventado.
 
 Rodando localmente, fora do Docker:
 
@@ -143,7 +145,7 @@ Declaradas explicitamente, não escondidas — fora do escopo deste teste técni
 - **Sem autenticação/autorização**: qualquer cliente com acesso à API pode chamar qualquer endpoint. Um sistema real precisaria de auth (JWT/OAuth) e controle de acesso por produtor/organização.
 - **Sem multi-tenancy**: todos os dados vivem no mesmo schema, sem isolamento por cliente/organização.
 - **Sem filas/eventos**: toda operação é síncrona request-response; não há processamento assíncrono nem integração por eventos.
-- **Frontend ainda incompleto**: só a fundação (ver [Frontend](#frontend)) está pronta nesta etapa — sem dashboard nem CRUD de produtor ainda.
+- **Frontend ainda incompleto**: dashboard completo (ver [Frontend](#frontend)), mas CRUD de produtor ainda não — a rota `/produtores` é um placeholder até a etapa F2.
 - **Validação funcional via Swagger é manual**: não há um passo automatizado que navegue o Swagger UI — é um checklist informal de quem for avaliar.
 
 ## Modelo de dados (ERD)

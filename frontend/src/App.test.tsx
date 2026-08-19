@@ -1,17 +1,35 @@
 import { render, screen } from '@testing-library/react';
 import App from './App';
+import { getDashboardSnapshot } from './api/dashboard';
+import { dashboardSnapshotFixture } from './mocks/dashboard';
+
+jest.mock('./api/dashboard');
+
+const mockedGetDashboardSnapshot = getDashboardSnapshot as jest.MockedFunction<
+  typeof getDashboardSnapshot
+>;
 
 /**
- * Teste de fumaça da etapa F0 — não há regra de negócio ainda para cobrir
- * (isso começa em F1). Este teste só prova que a fundação inteira (React +
- * Redux Provider + ThemeProvider do styled-components) sobe sem quebrar.
+ * Smoke test da etapa F1: prova que a casca inteira (Redux Provider,
+ * ThemeProvider, Router) sobe com a rota padrão renderizando o Dashboard,
+ * e que a navegação para Produtores está presente. Cobertura de regra de
+ * negócio de verdade fica em pages/Dashboard.test.tsx (os cinco casos
+ * obrigatórios da etapa).
  */
 describe('App', () => {
-  it('renderiza sem quebrar, com Redux e styled-components conectados', () => {
+  afterEach(() => {
+    jest.resetAllMocks();
+  });
+
+  it('renderiza a rota padrão (Dashboard) com Redux, styled-components e Router conectados', async () => {
+    mockedGetDashboardSnapshot.mockResolvedValue(dashboardSnapshotFixture);
+
     render(<App />);
 
     expect(
-      screen.getByRole('heading', { name: /brain agriculture/i }),
+      screen.getByRole('heading', { level: 1, name: 'Dashboard' }),
     ).toBeInTheDocument();
+    expect(await screen.findByText('128')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Produtores' })).toBeInTheDocument();
   });
 });
