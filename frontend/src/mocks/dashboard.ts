@@ -36,3 +36,22 @@ export const dashboardSnapshotWithoutCalculatedAtFixture: DashboardSnapshot = {
   ...dashboardSnapshotFixture,
   calculatedAt: undefined,
 };
+
+/**
+ * Snapshot de banco vazio (nenhum produtor/fazenda cadastrado ainda) — o
+ * próprio backend devolve isso sem erro (ver etapa 5 do backend, "banco
+ * vazio devolve tudo zerado"). `byLandUse` sempre tem as duas entradas
+ * (arable/vegetation) com `hectares: 0`; `byState`/`byCrop` vêm vazios de
+ * verdade (nenhum grupo para agrupar).
+ */
+export const emptyDashboardSnapshotFixture: DashboardSnapshot = {
+  totalFarms: 0,
+  totalHectares: 0,
+  byState: [],
+  byCrop: [],
+  byLandUse: [
+    { type: 'arable', hectares: 0 },
+    { type: 'vegetation', hectares: 0 },
+  ],
+  calculatedAt: '2026-08-19T21:14:00.000Z',
+};

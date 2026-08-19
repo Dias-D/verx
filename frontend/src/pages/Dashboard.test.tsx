@@ -6,7 +6,7 @@ import { MemoryRouter } from 'react-router-dom';
 import { theme } from '../theme';
 import dashboardReducer from '../store/dashboardSlice';
 import { getDashboardSnapshot } from '../api/dashboard';
-import { dashboardSnapshotFixture } from '../mocks/dashboard';
+import { dashboardSnapshotFixture, emptyDashboardSnapshotFixture } from '../mocks/dashboard';
 import { Dashboard } from './Dashboard';
 
 jest.mock('../api/dashboard');
@@ -94,5 +94,20 @@ describe('Dashboard (página)', () => {
     // dados anteriores continuam na tela, não zeram
     expect(screen.getByText('128')).toBeInTheDocument();
     expect(screen.getByText('342.500 ha')).toBeInTheDocument();
+  });
+
+  // Estado vazio (banco sem nenhum produtor/fazenda cadastrado ainda) — não
+  // é um dos 5 casos obrigatórios da etapa, mas é exigido pelo Definition
+  // of Done ("funcionalidade completa incluindo carregando/erro/vazio").
+  it('não quebra com banco vazio (byState/byCrop vazios, totais zerados)', async () => {
+    mockedGetDashboardSnapshot.mockResolvedValue(emptyDashboardSnapshotFixture);
+
+    renderDashboard();
+
+    expect(await screen.findByText('Fazendas cadastradas')).toBeInTheDocument();
+    expect(screen.getAllByText('0')).not.toHaveLength(0);
+    expect(screen.getByText('0 ha')).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Por estado' })).toBeInTheDocument();
+    expect(screen.getByRole('heading', { name: 'Por uso do solo' })).toBeInTheDocument();
   });
 });
