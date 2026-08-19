@@ -8,3 +8,6 @@ coverage
 npm-debug.log*
 .vscode
 .idea
+# Aplicação independente, com seu próprio Dockerfile/contexto de build —
+# não precisa entrar no contexto de build da API.
+frontend

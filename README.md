@@ -1,6 +1,8 @@
-# Brain Agriculture — API (Teste Técnico)
+# Brain Agriculture (Teste Técnico)
 
 Backend do teste técnico Brain Agriculture: cadastro de produtores rurais, suas propriedades, safras, culturas e o vínculo entre elas (culturas plantadas), mais um dashboard agregado. NestJS + TypeScript + PostgreSQL (via Prisma), arquitetura hexagonal (ports & adapters), construído inteiramente via TDD.
+
+Um frontend (`frontend/`) consome essa API por HTTP — ver [Frontend](#frontend) abaixo. Aplicação independente, com sua própria stack e ritmo de entrega; a API funciona sozinha sem ele.
 
 > O racional completo de cada decisão (por que hexagonal, por que Prisma, por que TDD, trade-offs registrados) vive no repositório de planejamento (`verx-resources`, privado ao processo de avaliação) — este README resume o suficiente para quem for rodar/avaliar só este repositório, sem precisar navegar dois lugares.
 
@@ -13,17 +15,19 @@ cp .env.example .env   # ajuste se necessário; os defaults já funcionam com o 
 docker compose up --build
 ```
 
-Isso sobe três serviços (`docker-compose.yml`):
+Isso sobe quatro serviços (`docker-compose.yml`):
 
 - `postgres` (`verx-postgres`, `postgres:16-alpine`) — fonte de verdade dos dados, com healthcheck e volume nomeado.
 - `redis` (`verx-redis`, `redis:7-alpine`) — store do cache do dashboard (stale-while-revalidate, ver abaixo), com healthcheck.
 - `api` (`verx-api`) — build multi-stage (`Dockerfile`), roda `prisma migrate deploy` seguido do seed de demonstração (idempotente, ver abaixo) e só então `node dist/main.js`. Só sobe depois de `postgres` **e** `redis` ficarem `healthy`.
+- `frontend` (`verx-frontend`) — build multi-stage (`frontend/Dockerfile`): compila o Vite/React (`VITE_API_URL` injetada como build arg) e serve os arquivos estáticos via nginx. Só sobe depois de `api` ficar `healthy`.
 
 Depois de subir (aguarde o healthcheck de `api` ficar `healthy`, ~15-20s):
 
 - **Swagger/OpenAPI**: http://localhost:3000/docs
 - **API**: http://localhost:3000/api/v1 (ex.: `GET /api/v1/producers`, `GET /api/v1/dashboard`)
 - **Health check**: http://localhost:3000/api/v1/health (reporta Postgres **e** Redis)
+- **Frontend**: http://localhost:5173 (ver [Frontend](#frontend) abaixo)
 
 O ambiente já sobe com **dado de demonstração** (produtores, propriedades em múltiplos estados, safras, culturas e vínculos) — o Swagger e o `GET /dashboard` não nascem vazios. Ver [Seed de dados de demonstração](#seed-de-dados-de-demonstração) abaixo.
 
@@ -58,6 +62,28 @@ Testes:
 yarn test        # unitários (services, validadores, entidades) — sem I/O
 yarn test:e2e     # integração (Testcontainers, Postgres + Redis reais) + e2e HTTP (Supertest)
 ```
+
+## Frontend
+
+> O frontend vive em `frontend/`, como aplicação independente que consome a API por HTTP. A URL da API é injetada por variável de ambiente, sem acoplamento em tempo de compilação.
+
+Vite + React 18 + TypeScript, Redux Toolkit, styled-components, React Router e Recharts; testes com Jest + ts-jest + React Testing Library. Projeto próprio dentro deste repositório (`frontend/`, package.json/yarn.lock independentes do backend), consumindo a API só por HTTP — nunca importa nada de `src/`.
+
+**Status atual**: fundação (estrutura de pastas em design atômico — `api/`, `store/`, `components/atoms|molecules|organisms|templates/`, `pages/`, `types/` —, Jest configurado, tema base do styled-components, store do Redux e `api/client.ts` encapsulando `fetch`). Ainda sem telas: dashboard e CRUD de produtor chegam nas próximas etapas.
+
+Rodando localmente, fora do Docker:
+
+```bash
+cd frontend
+corepack enable && corepack prepare yarn@4.14 --activate
+yarn install
+cp .env.example .env   # ajuste VITE_API_URL se a API não estiver em localhost:3000
+yarn dev                # http://localhost:5173 (porta padrão do Vite)
+yarn test                # Jest + React Testing Library
+yarn build                # gera frontend/dist (o que o Dockerfile também faz)
+```
+
+Via `docker compose up --build` (raiz do repositório), o frontend sobe junto com a API em http://localhost:5173, servido por nginx a partir do build de produção do Vite.
 
 ## Decisões técnicas e por quê
 
@@ -117,7 +143,7 @@ Declaradas explicitamente, não escondidas — fora do escopo deste teste técni
 - **Sem autenticação/autorização**: qualquer cliente com acesso à API pode chamar qualquer endpoint. Um sistema real precisaria de auth (JWT/OAuth) e controle de acesso por produtor/organização.
 - **Sem multi-tenancy**: todos os dados vivem no mesmo schema, sem isolamento por cliente/organização.
 - **Sem filas/eventos**: toda operação é síncrona request-response; não há processamento assíncrono nem integração por eventos.
-- **Sem frontend**: a trilha deste teste técnico é backend apenas.
+- **Frontend ainda incompleto**: só a fundação (ver [Frontend](#frontend)) está pronta nesta etapa — sem dashboard nem CRUD de produtor ainda.
 - **Validação funcional via Swagger é manual**: não há um passo automatizado que navegue o Swagger UI — é um checklist informal de quem for avaliar.
 
 ## Modelo de dados (ERD)

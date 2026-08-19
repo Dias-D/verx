@@ -63,5 +63,27 @@ services:
       retries: 10
       start_period: 15s
 
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        # Endereço da API alcançável pelo navegador (não pela rede interna
+        # do compose) — a porta 3000 do serviço `api` já é publicada acima.
+        VITE_API_URL: http://localhost:3000/api/v1
+    container_name: verx-frontend
+    restart: unless-stopped
+    ports:
+      - '5173:80'
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test: ['CMD', 'wget', '--no-verbose', '--tries=1', '--spider', 'http://localhost:80/']
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 5s
+
 volumes:
   verx_postgres_data:
