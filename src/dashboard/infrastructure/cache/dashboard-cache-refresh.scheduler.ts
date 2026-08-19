@@ -39,6 +39,7 @@ import { DASHBOARD_CACHE_PORT } from '../../domain/dashboard-cache.port';
 import type { DashboardCachePort } from '../../domain/dashboard-cache.port';
 import { DASHBOARD_READ_PORT } from '../../domain/dashboard.read.port';
 import type { DashboardReadPort } from '../../domain/dashboard.read.port';
+import type { DashboardSnapshot } from '../../domain/dashboard-snapshot';
 
 const DASHBOARD_CACHE_REFRESH_INTERVAL_NAME = 'dashboard-cache-refresh';
 const DEFAULT_TTL_SECONDS = 300;
@@ -103,7 +104,14 @@ export class DashboardCacheRefreshScheduler
     const startedAt = Date.now();
     try {
       const snapshot = await this.readPort.getSnapshot();
-      await this.cachePort.set(snapshot, this.ttlSeconds);
+      // calculatedAt marca o momento do CÁLCULO (agora, logo depois da
+      // agregação real), não o momento em que um cliente eventualmente vai
+      // ler esse valor do cache — ver decisoes-pendentes.md#1.
+      const snapshotWithCalculatedAt: DashboardSnapshot = {
+        ...snapshot,
+        calculatedAt: new Date(),
+      };
+      await this.cachePort.set(snapshotWithCalculatedAt, this.ttlSeconds);
       this.logger.log(
         {
           event: DASHBOARD_CACHE_REFRESH_INTERVAL_NAME,

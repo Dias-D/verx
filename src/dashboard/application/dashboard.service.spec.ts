@@ -66,6 +66,16 @@ describe('DashboardService', () => {
     expect(fakeLogger.log).not.toHaveBeenCalled();
   });
 
+  it('cache hit: expõe calculatedAt exatamente como veio do cache — nenhuma lógica nova de leitura (ver decisoes-pendentes.md#1)', async () => {
+    const calculatedAt = new Date('2026-08-19T09:00:00.000Z');
+    const cachedSnapshot = buildDashboardSnapshot({ calculatedAt });
+    fakeCachePort.get.mockResolvedValue(cachedSnapshot);
+
+    const result = await service.getSnapshot();
+
+    expect(result.calculatedAt).toBe(calculatedAt);
+  });
+
   it('cold start: cache vazio (get devolve null) cai no fallback síncrono via a porta de leitura, e loga o evento de cache miss', async () => {
     const freshSnapshot = buildDashboardSnapshot();
     fakeCachePort.get.mockResolvedValue(null);

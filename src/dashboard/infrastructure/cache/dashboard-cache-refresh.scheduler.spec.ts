@@ -87,7 +87,35 @@ describe('DashboardCacheRefreshScheduler', () => {
     await scheduler.refresh();
 
     expect(fakeReadPort.getSnapshot).toHaveBeenCalledTimes(1);
-    expect(fakeCachePort.set).toHaveBeenCalledWith(snapshot, 300);
+    // objectContaining, não igualdade exata: o snapshot gravado ganha
+    // calculatedAt a mais (ver teste dedicado logo abaixo) — os agregados em
+    // si continuam batendo exatamente com o que a porta de leitura devolveu.
+    expect(fakeCachePort.set).toHaveBeenCalledWith(
+      expect.objectContaining(snapshot),
+      300,
+    );
+  });
+
+  it('grava calculatedAt = new Date() no momento em que calcula a agregação, antes de escrever no cache — não é o horário do fetch, é o do cálculo (ver decisoes-pendentes.md#1)', async () => {
+    const snapshot = buildDashboardSnapshot();
+    fakeReadPort.getSnapshot.mockResolvedValue(snapshot);
+    const before = new Date();
+
+    await scheduler.refresh();
+
+    const after = new Date();
+    expect(fakeCachePort.set).toHaveBeenCalledTimes(1);
+    const [savedSnapshot, ttl] = fakeCachePort.set.mock.calls[0];
+    expect(ttl).toBe(300);
+    expect(savedSnapshot.calculatedAt).toBeInstanceOf(Date);
+    expect(savedSnapshot.calculatedAt!.getTime()).toBeGreaterThanOrEqual(
+      before.getTime(),
+    );
+    expect(savedSnapshot.calculatedAt!.getTime()).toBeLessThanOrEqual(
+      after.getTime(),
+    );
+    // Os agregados em si continuam intactos — só ganham o campo novo.
+    expect(savedSnapshot).toMatchObject(snapshot);
   });
 
   it('roda uma vez em onApplicationBootstrap, para não haver cache vazio no primeiro request real', async () => {
@@ -96,7 +124,10 @@ describe('DashboardCacheRefreshScheduler', () => {
 
     await scheduler.onApplicationBootstrap();
 
-    expect(fakeCachePort.set).toHaveBeenCalledWith(snapshot, 300);
+    expect(fakeCachePort.set).toHaveBeenCalledWith(
+      expect.objectContaining(snapshot),
+      300,
+    );
 
     const [, intervalHandle] = fakeSchedulerRegistry.addInterval.mock
       .calls[0] as [string, NodeJS.Timeout];
@@ -163,7 +194,10 @@ describe('DashboardCacheRefreshScheduler', () => {
 
     await schedulerWithoutEnv.refresh();
 
-    expect(fakeCachePort.set).toHaveBeenCalledWith(snapshot, 300);
+    expect(fakeCachePort.set).toHaveBeenCalledWith(
+      expect.objectContaining(snapshot),
+      300,
+    );
   });
 
   it('loga sucesso (com metadados de duração) quando o refresh completa', async () => {

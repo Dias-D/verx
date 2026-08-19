@@ -26,4 +26,13 @@ export interface DashboardSnapshot {
   byState: DashboardStateCount[];
   byCrop: DashboardCropCount[];
   byLandUse: DashboardLandUseHectares[];
+  // Horário em que o agregado foi CALCULADO (não o horário do fetch/leitura)
+  // — ver decisoes-pendentes.md#1. Gravado só pelo
+  // DashboardCacheRefreshScheduler, no momento em que chama a agregação,
+  // antes de escrever no cache (infrastructure/cache/dashboard-cache-refresh.scheduler.ts#refresh).
+  // Opcional porque a porta de leitura (DashboardReadPort/DashboardPrismaRepository)
+  // continua devolvendo só os agregados, sem esse campo — o fallback síncrono
+  // de cold start (DashboardService#getSnapshot) não o carimba (nenhuma
+  // lógica nova de leitura, decisão explícita).
+  calculatedAt?: Date;
 }

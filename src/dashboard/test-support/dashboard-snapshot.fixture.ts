@@ -24,5 +24,13 @@ export function buildDashboardSnapshot(
       { type: 'arable', hectares: 600 },
       { type: 'vegetation', hectares: 400 },
     ],
+    // Sem default proposital: calculatedAt só existe de verdade quando o
+    // DashboardCacheRefreshScheduler carimba (ver dashboard-snapshot.ts).
+    // Testes que precisam de um valor passam via overrides explicitamente —
+    // omitido por completo (não `undefined` explícito) quando não informado,
+    // pra bater exatamente com o shape que a porta de leitura devolve hoje.
+    ...(overrides.calculatedAt !== undefined
+      ? { calculatedAt: overrides.calculatedAt }
+      : {}),
   };
 }

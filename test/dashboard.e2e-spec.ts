@@ -35,6 +35,7 @@ interface DashboardResponseBody {
   byState: { state: string; count: number }[];
   byCrop: { crop: string; count: number }[];
   byLandUse: { type: string; hectares: number }[];
+  calculatedAt: string;
 }
 
 interface ProducerResponseBody {
@@ -63,6 +64,11 @@ describe('Dashboard (e2e)', () => {
   let postgresContainer: StartedPostgreSqlContainer;
   let redisContainer: StartedRedisContainer;
   let getSnapshotSpy: jest.SpiedFunction<DashboardReadPort['getSnapshot']>;
+  // Capturado no primeiro teste (cache já aquecido pelo bootstrap) e
+  // reutilizado nos testes seguintes pra confirmar que calculatedAt reflete
+  // o momento do CÁLCULO (só muda quando o scheduler recalcula de verdade),
+  // nunca o momento do fetch (ver decisoes-pendentes.md#1).
+  let calculatedAtAfterBootstrap: string;
 
   beforeAll(async () => {
     postgresContainer = await new PostgreSqlContainer(
@@ -109,7 +115,7 @@ describe('Dashboard (e2e)', () => {
 
     expect(response.status).toBe(200);
     const body = response.body as DashboardResponseBody;
-    expect(body).toEqual({
+    expect(body).toMatchObject({
       totalFarms: 0,
       totalHectares: 0,
       byState: [],
@@ -119,8 +125,17 @@ describe('Dashboard (e2e)', () => {
         { type: 'vegetation', hectares: 0 },
       ],
     });
+    // Gravado pelo DashboardCacheRefreshScheduler no bootstrap
+    // (onApplicationBootstrap), não pela própria requisição — ver
+    // decisoes-pendentes.md#1. Serializado como string ISO 8601 no JSON,
+    // como qualquer Date num payload HTTP (checado à parte do toMatchObject
+    // acima porque o valor em si é dinâmico, não fixo).
+    expect(typeof body.calculatedAt).toBe('string');
+    expect(Number.isNaN(Date.parse(body.calculatedAt))).toBe(false);
     // A própria requisição não deve ter disparado nenhum recálculo.
     expect(getSnapshotSpy).toHaveBeenCalledTimes(1);
+
+    calculatedAtAfterBootstrap = body.calculatedAt;
   });
 
   it('GET /dashboard inclui X-Request-Id mesmo servido do cache', async () => {
@@ -137,11 +152,26 @@ describe('Dashboard (e2e)', () => {
   it('GET /dashboard não recalcula em requisições repetidas dentro da janela de TTL', async () => {
     const callsBefore = getSnapshotSpy.mock.calls.length;
 
-    await request(app.getHttpServer()).get('/api/v1/dashboard').expect(200);
-    await request(app.getHttpServer()).get('/api/v1/dashboard').expect(200);
-    await request(app.getHttpServer()).get('/api/v1/dashboard').expect(200);
+    const first = await request(app.getHttpServer())
+      .get('/api/v1/dashboard')
+      .expect(200);
+    const second = await request(app.getHttpServer())
+      .get('/api/v1/dashboard')
+      .expect(200);
+    const third = await request(app.getHttpServer())
+      .get('/api/v1/dashboard')
+      .expect(200);
 
     expect(getSnapshotSpy.mock.calls.length).toBe(callsBefore);
+    // calculatedAt é o horário do CÁLCULO, não do fetch — requisições
+    // repetidas servidas do mesmo cache devem devolver o mesmo valor, mesmo
+    // que os fetches em si aconteçam em instantes diferentes.
+    const firstBody = first.body as DashboardResponseBody;
+    const secondBody = second.body as DashboardResponseBody;
+    const thirdBody = third.body as DashboardResponseBody;
+    expect(firstBody.calculatedAt).toBe(calculatedAtAfterBootstrap);
+    expect(secondBody.calculatedAt).toBe(calculatedAtAfterBootstrap);
+    expect(thirdBody.calculatedAt).toBe(calculatedAtAfterBootstrap);
   });
 
   it('GET /dashboard reflete dados cadastrados via HTTP só depois que o refresh agendado roda (TTL expirado), sem que a própria requisição recalcule', async () => {
@@ -208,6 +238,12 @@ describe('Dashboard (e2e)', () => {
     );
     expect(dashboardCrop).toBeDefined();
     expect(typeof dashboardCrop?.count).toBe('number');
+    // calculatedAt avançou porque o scheduler recalculou de verdade nesse
+    // meio-tempo — confirma que o campo segue o momento do CÁLCULO, não do
+    // fetch (ver decisoes-pendentes.md#1).
+    expect(Date.parse(body.calculatedAt)).toBeGreaterThan(
+      Date.parse(calculatedAtAfterBootstrap),
+    );
     expect(body.byLandUse).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ type: 'arable' }),
