@@ -40,8 +40,22 @@ const Main = styled.main`
   padding: 28px 24px 60px;
 `;
 
+const PageHead = styled.div`
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: ${({ theme }) => theme.spacing.md};
+`;
+
 export interface PageLayoutProps {
   title: string;
+  /**
+   * Região opcional ao lado do título — espelha `.page-head` do wireframe
+   * congelado de `crud-produtor.html` (botão "+ Novo produtor" ao lado do
+   * h1). Ausente em `dashboard.html`, por isso opcional: template continua
+   * sem conhecer o domínio, só recebe a região pronta por props.
+   */
+  actions?: ReactNode;
   children: ReactNode;
 }
 
@@ -53,7 +67,7 @@ export interface PageLayoutProps {
  * `react-router-dom` só como mecanismo de navegação (infra), não como
  * conhecimento de domínio.
  */
-export function PageLayout({ title, children }: PageLayoutProps) {
+export function PageLayout({ title, actions, children }: PageLayoutProps) {
   return (
     <>
       <Header>
@@ -66,7 +80,14 @@ export function PageLayout({ title, children }: PageLayoutProps) {
         </Nav>
       </Header>
       <Main>
-        <Heading level={1}>{title}</Heading>
+        {actions ? (
+          <PageHead>
+            <Heading level={1}>{title}</Heading>
+            {actions}
+          </PageHead>
+        ) : (
+          <Heading level={1}>{title}</Heading>
+        )}
         {children}
       </Main>
     </>

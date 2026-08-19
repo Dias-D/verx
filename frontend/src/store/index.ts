@@ -1,13 +1,15 @@
 import { configureStore } from '@reduxjs/toolkit';
 import dashboardReducer from './dashboardSlice';
+import produtoresReducer from './produtoresSlice';
 
 /**
- * Store da aplicação. `dashboardSlice` (F1) é o primeiro slice real;
- * `produtoresSlice` (F2) entra quando a etapa que precisa dele chegar.
+ * Store da aplicação. `dashboardSlice` (F1) e `produtoresSlice` (F2, CRUD de
+ * produtor).
  */
 export const store = configureStore({
   reducer: {
     dashboard: dashboardReducer,
+    produtores: produtoresReducer,
   },
 });
 

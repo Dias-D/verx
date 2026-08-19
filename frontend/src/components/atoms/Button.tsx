@@ -41,3 +41,31 @@ export function Button({ children, type = 'button', ...rest }: ButtonProps) {
     </StyledButton>
   );
 }
+
+/**
+ * Variante de Button — espelha `button.btn-secondary` do wireframe congelado
+ * (fundo branco, borda neutra). Mesmo átomo, sem novo componente/nível: só
+ * estilo diferente para a ação "Cancelar" que os fluxos de F2 introduzem
+ * (ConfirmDialog, ProdutorForm).
+ */
+export const SecondaryButton = styled(StyledButton)`
+  background: ${({ theme }) => theme.colors.surface};
+  color: ${({ theme }) => theme.colors.text};
+  border: 1px solid ${({ theme }) => theme.colors.border};
+
+  &:hover:not(:disabled) {
+    background: ${({ theme }) => theme.colors.background};
+  }
+`;
+
+/**
+ * Variante de Button — espelha `button.btn-danger` do wireframe congelado,
+ * usada pela ação destrutiva de exclusão (ConfirmDialog).
+ */
+export const DangerButton = styled(StyledButton)`
+  background: ${({ theme }) => theme.colors.danger};
+
+  &:hover:not(:disabled) {
+    opacity: 0.9;
+  }
+`;

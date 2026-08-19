@@ -36,4 +36,14 @@ describe('PageLayout (template)', () => {
 
     expect(screen.getByText('região de conteúdo')).toBeInTheDocument();
   });
+
+  it('renderiza a região opcional "actions" ao lado do título, quando recebida', () => {
+    renderWithProviders(
+      <PageLayout title="Produtores" actions={<button>+ Novo produtor</button>}>
+        <span>região de conteúdo</span>
+      </PageLayout>,
+    );
+
+    expect(screen.getByRole('button', { name: '+ Novo produtor' })).toBeInTheDocument();
+  });
 });
