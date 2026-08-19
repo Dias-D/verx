@@ -7,8 +7,15 @@
 // requisição — exceto em cold start (cache ainda vazio, o
 // DashboardCacheRefreshScheduler ainda não rodou pela primeira vez), caso em
 // que cai num fallback síncrono via a porta de leitura.
+//
+// Log de "cache miss" (evento distinto do log do scheduler,
+// dashboard-cache-refresh.scheduler.ts) — instrumentação simples usada na
+// etapa 8 (teste de carga) para provar via log estruturado que a agregação
+// real (fallback síncrono) não é chamada mais vezes do que o esperado sob
+// tráfego sustentado: só deve acontecer em cold start, nunca em cache hit.
 
 import { Test } from '@nestjs/testing';
+import { Logger } from 'nestjs-pino';
 import {
   DASHBOARD_CACHE_PORT,
   DashboardCachePort,
@@ -29,6 +36,10 @@ describe('DashboardService', () => {
     get: jest.fn(),
     set: jest.fn(),
   };
+  const fakeLogger: jest.Mocked<Pick<Logger, 'log' | 'error'>> = {
+    log: jest.fn(),
+    error: jest.fn(),
+  };
 
   beforeEach(async () => {
     jest.clearAllMocks();
@@ -37,12 +48,13 @@ describe('DashboardService', () => {
         DashboardService,
         { provide: DASHBOARD_READ_PORT, useValue: fakeReadPort },
         { provide: DASHBOARD_CACHE_PORT, useValue: fakeCachePort },
+        { provide: Logger, useValue: fakeLogger },
       ],
     }).compile();
     service = module.get(DashboardService);
   });
 
-  it('cache hit: devolve o snapshot do cache direto, sem recalcular via a porta de leitura', async () => {
+  it('cache hit: devolve o snapshot do cache direto, sem recalcular via a porta de leitura, e sem logar cache miss', async () => {
     const cachedSnapshot = buildDashboardSnapshot();
     fakeCachePort.get.mockResolvedValue(cachedSnapshot);
 
@@ -51,9 +63,10 @@ describe('DashboardService', () => {
     expect(result).toBe(cachedSnapshot);
     expect(fakeCachePort.get).toHaveBeenCalledTimes(1);
     expect(fakeReadPort.getSnapshot).not.toHaveBeenCalled();
+    expect(fakeLogger.log).not.toHaveBeenCalled();
   });
 
-  it('cold start: cache vazio (get devolve null) cai no fallback síncrono via a porta de leitura', async () => {
+  it('cold start: cache vazio (get devolve null) cai no fallback síncrono via a porta de leitura, e loga o evento de cache miss', async () => {
     const freshSnapshot = buildDashboardSnapshot();
     fakeCachePort.get.mockResolvedValue(null);
     fakeReadPort.getSnapshot.mockResolvedValue(freshSnapshot);
@@ -62,6 +75,9 @@ describe('DashboardService', () => {
 
     expect(result).toBe(freshSnapshot);
     expect(fakeReadPort.getSnapshot).toHaveBeenCalledTimes(1);
+    expect(fakeLogger.log).toHaveBeenCalledTimes(1);
+    const [payload] = fakeLogger.log.mock.calls[0] as [Record<string, unknown>];
+    expect(payload).toMatchObject({ event: 'dashboard-snapshot-cache-miss' });
   });
 
   it('não lança erro quando o banco está vazio (tudo zerado) — cold start', async () => {

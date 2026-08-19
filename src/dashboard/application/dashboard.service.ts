@@ -6,8 +6,16 @@
 // requisição — exceto em cold start (cache ainda vazio, o
 // DashboardCacheRefreshScheduler ainda não rodou pela primeira vez), caso em
 // que cai num fallback síncrono via a porta de leitura.
+//
+// Log de "cache miss" (nestjs-pino, Logger injetável globalmente via
+// LoggerModule — ver shared/logger/logger.module.ts): evento distinto do log
+// do scheduler (dashboard-cache-refresh.scheduler.ts#refresh), usado na
+// etapa 8 (teste de carga) como prova, via log estruturado, de que a
+// agregação real por request só acontece em cold start — nunca em cache
+// hit, mesmo sob tráfego concorrente sustentado.
 
 import { Inject, Injectable } from '@nestjs/common';
+import { Logger } from 'nestjs-pino';
 import { DASHBOARD_CACHE_PORT } from '../domain/dashboard-cache.port';
 import type { DashboardCachePort } from '../domain/dashboard-cache.port';
 import { DashboardSnapshot } from '../domain/dashboard-snapshot';
@@ -21,6 +29,7 @@ export class DashboardService {
     private readonly readPort: DashboardReadPort,
     @Inject(DASHBOARD_CACHE_PORT)
     private readonly cachePort: DashboardCachePort,
+    private readonly logger: Logger,
   ) {}
 
   async getSnapshot(): Promise<DashboardSnapshot> {
@@ -30,7 +39,12 @@ export class DashboardService {
     }
 
     // Cold start: nenhum valor em cache ainda (o refresh agendado ainda não
-    // rodou pela primeira vez) — único caso em que calculamos na hora.
+    // rodou pela primeira vez, ou o cache expirou sem um refresh ainda
+    // rodar) — único caso em que calculamos na hora.
+    this.logger.log(
+      { event: 'dashboard-snapshot-cache-miss' },
+      'Dashboard snapshot cache miss — falling back to real aggregation',
+    );
     return this.readPort.getSnapshot();
   }
 }
